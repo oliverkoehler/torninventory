@@ -12,7 +12,6 @@ import {
 } from './controllers/logController.js'
 import { fetchAndStoreItems } from './controllers/itemController.js'
 import { createSnapshot } from './controllers/snapshotController.js'
-import req from "express/lib/request";
 
 await db()
 
