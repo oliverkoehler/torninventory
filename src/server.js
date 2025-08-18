@@ -82,15 +82,6 @@ app.post('/inventory', async (req, res) => {
     }
 })
 
-app.get('/test', async (req, res) => {
-    try {
-        return await axios.get("https://weav3r.dev/api/marketplace/206")
-    } catch (err) {
-        console.error(err)
-        res.status(500).json({ error: 'Fehler beim Berechnen des Inventars' })
-    }
-})
-
 // ---------- Cronjobs ----------
 
 // Jede Minute → Logs abrufen
