@@ -5,6 +5,7 @@ import bodyParser from 'body-parser'
 import cron from 'node-cron'
 import db from './config/db.js'
 import axios from 'axios'
+import Log from './models/Logs.js'
 
 import {
     calculateInventory,
@@ -95,6 +96,71 @@ cron.schedule('0 3 * * *', async () => {
     console.log('⏱ Running fetchAndStoreItems() via cron...')
     await fetchAndStoreItems()
 })
+
+// ---------- Daily Profit (FIFO, 30 Tage, heute zuerst) ----------
+app.get("/daily-profit", async (req, res) => {
+    try {
+        const last30Days = new Date();
+        last30Days.setDate(last30Days.getDate() - 30);
+
+        // Alle relevanten Logs abrufen
+        const logs = await Log.find({
+            timestamp: { $gte: last30Days },
+            "details.id": { $in: [1225, 1226, 1112, 1113] }
+        }).sort({ timestamp: 1 }); // aufsteigend für FIFO
+
+        // Käufe nach ItemId gruppieren (FIFO Queue)
+        const buyQueues = {};
+        const profitPerDay = {};
+
+        for (const log of logs) {
+            const itemId = log.data.items[0]?.id;
+            const qty = log.data.items[0]?.qty;
+            const cost = log.data.cost_each;
+
+            if (!itemId || !qty || !cost) continue;
+
+            const date = log.timestamp.toISOString().split('T')[0];
+
+            // Buy Logs → in Queue
+            if ([1225, 1112].includes(log.details.id)) {
+                if (!buyQueues[itemId]) buyQueues[itemId] = [];
+                buyQueues[itemId].push({ qty, price: cost });
+            }
+
+            // Sell Logs → FIFO Matching
+            if ([1226, 1113].includes(log.details.id)) {
+                let remainingQty = qty;
+                const queue = buyQueues[itemId] || [];
+
+                while (remainingQty > 0 && queue.length > 0) {
+                    const buy = queue[0];
+                    const usedQty = Math.min(remainingQty, buy.qty);
+                    const profit = usedQty * (cost - buy.price);
+
+                    if (!profitPerDay[date]) profitPerDay[date] = 0;
+                    profitPerDay[date] += profit;
+
+                    buy.qty -= usedQty;
+                    if (buy.qty <= 0) queue.shift();
+
+                    remainingQty -= usedQty;
+                }
+            }
+        }
+
+        // Tages-Resultat sortiert von heute → früher
+        const sortedDates = Object.keys(profitPerDay).sort((a, b) => b.localeCompare(a));
+        const sortedProfits = {};
+        for (const d of sortedDates) sortedProfits[d] = profitPerDay[d];
+
+        res.json(sortedProfits);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Fehler beim Berechnen des Daily Profit" });
+    }
+});
+
 
 // ---------- Server Start ----------
 const PORT = process.env.PORT || 3000
