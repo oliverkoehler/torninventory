@@ -120,9 +120,9 @@ app.get("/daily-profit", async (req, res) => {
 
             if (!itemId || !qty || !cost) continue;
 
-            const date = log.timestamp.toISOString().split('T')[0];
+            const date = log.timestamp.toISOString().split("T")[0];
 
-            // Buy Logs → in Queue
+            // Buy Logs → in Queue + als negative Ausgabe verbuchen
             if ([1225, 1112].includes(log.details.id)) {
                 if (!buyQueues[itemId]) buyQueues[itemId] = [];
                 buyQueues[itemId].push({ qty, price: cost });
@@ -149,7 +149,16 @@ app.get("/daily-profit", async (req, res) => {
             }
         }
 
-        // Tages-Resultat sortiert von heute → früher
+        // Alle letzten 30 Tage durchgehen → fehlende Tage mit 0 auffüllen
+        const today = new Date();
+        for (let i = 0; i < 30; i++) {
+            const d = new Date();
+            d.setDate(today.getDate() - i);
+            const dateKey = d.toISOString().split("T")[0];
+            if (!profitPerDay[dateKey]) profitPerDay[dateKey] = 0;
+        }
+
+        // nach Datum absteigend sortieren
         const sortedDates = Object.keys(profitPerDay).sort((a, b) => b.localeCompare(a));
         const sortedProfits = {};
         for (const d of sortedDates) sortedProfits[d] = profitPerDay[d];
